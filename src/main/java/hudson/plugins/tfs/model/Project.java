@@ -3,6 +3,7 @@ package hudson.plugins.tfs.model;
 import hudson.plugins.tfs.commands.BriefHistoryCommand;
 import hudson.plugins.tfs.commands.DetailedHistoryCommand;
 import hudson.plugins.tfs.commands.GetFilesToWorkFolderCommand;
+import hudson.plugins.tfs.commands.LabelCommand;
 import hudson.plugins.tfs.commands.WorkspaceChangesetVersionCommand;
 
 import java.io.IOException;
@@ -100,6 +101,23 @@ public class Project {
         } finally {
             IOUtils.closeQuietly(reader);
         }
+    }
+    
+    /**
+     * Applies label to all files under specified localPath in specified TFS workspace.
+     * 
+     * @param localPath which items to label
+     * @param workspaceName TFS workspace to label
+     * @param labelName label name 
+     * @param labelComment label comment
+     * 
+     */
+    public void applyLabel(String localPath, String workspaceName, String labelName, String labelComment) 
+                                                                                                throws
+                                                                                                IOException, 
+                                                                                                InterruptedException {
+        LabelCommand command = new LabelCommand(server, localPath, workspaceName, labelName, labelComment);
+        server.execute(command.getArguments());
     }
 
     @Override

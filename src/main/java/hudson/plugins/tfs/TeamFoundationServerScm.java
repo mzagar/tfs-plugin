@@ -39,6 +39,7 @@ import hudson.plugins.tfs.model.Server;
 import hudson.plugins.tfs.model.ChangeSet;
 import hudson.plugins.tfs.util.BuildVariableResolver;
 import hudson.plugins.tfs.util.BuildWorkspaceConfigurationRetriever;
+import hudson.plugins.tfs.util.LabelBuilder;
 import hudson.plugins.tfs.util.BuildWorkspaceConfigurationRetriever.BuildWorkspaceConfiguration;
 import hudson.scm.ChangeLogParser;
 import hudson.scm.RepositoryBrowsers;
@@ -183,7 +184,12 @@ public class TeamFoundationServerScm extends SCM {
             String workFolder = workspaceConfiguration.getWorkfolder();
             String workspaceName = workspaceConfiguration.getWorkspaceName();
             Project project = server.getProject(projectPath);
+            
             setWorkspaceChangesetVersion(project.getWorkspaceChangesetVersion(workFolder, workspaceName));
+        
+            LabelBuilder labelBuilder = new LabelBuilder(build, getWorkspaceChangesetVersion(), workspaceConfiguration);
+            project.applyLabel(workFolder, workspaceName,  labelBuilder.buildLabelName(), labelBuilder.buildLabelComment());
+        
         } catch (ParseException pe) {
             listener.fatalError(pe.getMessage());
             throw new AbortException();
@@ -194,6 +200,10 @@ public class TeamFoundationServerScm extends SCM {
 
     void setWorkspaceChangesetVersion(String workspaceChangesetVersion) {
         this.workspaceChangesetVersion = workspaceChangesetVersion;
+    }
+    
+    String getWorkspaceChangesetVersion() {
+        return this.workspaceChangesetVersion;
     }
 
     @Override
