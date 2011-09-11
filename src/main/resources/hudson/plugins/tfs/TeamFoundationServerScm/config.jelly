@@ -34,6 +34,16 @@
             <f:textbox name="tfs.workspaceName" value="${h.defaulted(scm.workspaceName, 'Hudson-${JOB_NAME}-${NODE_NAME}')}"
              checkUrl="'${rootURL}/scm/TeamFoundationServerScm/workspaceNameCheck?value='+escape(this.value)"/>
         </f:entry>
+        
+       <f:entry>
+           <f:optionalBlock name="tfs.applyLabel" title="Apply label" checked="${h.defaultToTrue(scm.applyLabel)}" description="If checked, Hudson will label code checked out from TFS. Label is applied after code is checked out/updated but before the build starts.">
+             <f:entry title="Label name">
+                <f:textbox name="tfs.labelName" value="${h.defaulted(scm.labelName, '[jenkins-${JOB_NAME}-${TFS_CHANGESET}]')}"
+                    checkUrl="'${rootURL}/scm/TeamFoundationServerScm/labelNameCheck?value='+escape(this.value)"/>
+             </f:entry>
+          </f:optionalBlock>
+       </f:entry>        
+        
     </f:advanced>
     
     <t:listScmBrowsers name="tfs.browser" />

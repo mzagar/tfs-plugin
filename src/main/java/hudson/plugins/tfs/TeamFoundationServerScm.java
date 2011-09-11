@@ -14,6 +14,7 @@ import java.util.regex.Pattern;
 
 import net.sf.json.JSONObject;
 
+import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
 
@@ -71,19 +72,30 @@ public class TeamFoundationServerScm extends SCM {
     private final String userPassword;
     private final String userName;
     private final boolean useUpdate;
+    private final boolean applyLabel;
+    private final String labelName;
     
     private TeamFoundationServerRepositoryBrowser repositoryBrowser;
 
     private transient String normalizedWorkspaceName;
     private transient String workspaceChangesetVersion;
+    private transient String normalizedLabelName;
     
     private static final Logger logger = Logger.getLogger(TeamFoundationServerScm.class.getName()); 
 
     @DataBoundConstructor
-    public TeamFoundationServerScm(String serverUrl, String projectPath, String localPath, boolean useUpdate, String workspaceName, String userName, String userPassword) {
+    public TeamFoundationServerScm(String serverUrl, String projectPath, String localPath, boolean useUpdate, boolean applyLabel, String labelName, String workspaceName, String userName, String userPassword) {
         this.serverUrl = serverUrl;
         this.projectPath = projectPath;
         this.useUpdate = useUpdate;
+        this.applyLabel = applyLabel;
+        
+        logger.info("==== labelName={" + labelName + "}");
+        
+        this.labelName = (Util.fixEmptyAndTrim(labelName) == null ? "jenkins-${JOB_NAME}-${TFS_CHANGESET}" : labelName);;
+
+        logger.info("==== this.labelName={" + this.labelName + "}");
+
         this.localPath = (Util.fixEmptyAndTrim(localPath) == null ? "." : localPath);
         this.workspaceName = (Util.fixEmptyAndTrim(workspaceName) == null ? "Hudson-${JOB_NAME}-${NODE_NAME}" : workspaceName);
         this.userName = userName;
@@ -110,6 +122,14 @@ public class TeamFoundationServerScm extends SCM {
     public boolean isUseUpdate() {
         return useUpdate;
     }
+    
+    public boolean isApplyLabel() {
+        return applyLabel;
+    }
+    
+    public String getLabelName() {
+        return labelName;
+    }
 
     public String getUserPassword() {
         return Scrambler.descramble(userPassword);
@@ -129,6 +149,29 @@ public class TeamFoundationServerScm extends SCM {
         normalizedWorkspaceName = normalizedWorkspaceName.replaceAll("[\"/:<>\\|\\*\\?]+", "_");
         normalizedWorkspaceName = normalizedWorkspaceName.replaceAll("[\\.\\s]+$", "_");
         return normalizedWorkspaceName;
+    }
+    
+    String getLabelName(AbstractBuild<?,?> build, Computer computer) {
+        
+        logger.info("--- labelName={" + labelName + "}");
+        
+        normalizedLabelName = labelName;
+        
+        if (build != null) {
+            normalizedLabelName = substituteBuildParameter(build, normalizedLabelName);
+     
+            logger.info("--- normalizedLabelName1={" + normalizedLabelName + "}");
+            
+            normalizedLabelName = Util.replaceMacro(normalizedLabelName, new BuildVariableResolver(build.getProject(), computer));
+
+            logger.info("--- normalizedLabelName2={" + normalizedLabelName + "}");
+        }
+
+        
+        normalizedLabelName = normalizedLabelName.replaceAll("[\"/:<>\\|\\*\\?]+", "_");
+        normalizedLabelName = normalizedLabelName.replaceAll("[\\.\\s]+$", "_");
+        return normalizedLabelName;
+        
     }
 
     public String getServerUrl(Run<?,?> run) {
@@ -187,9 +230,13 @@ public class TeamFoundationServerScm extends SCM {
             
             setWorkspaceChangesetVersion(project.getWorkspaceChangesetVersion(workFolder, workspaceName));
         
-            LabelBuilder labelBuilder = new LabelBuilder(build, getWorkspaceChangesetVersion(), workspaceConfiguration);
-            project.applyLabel(workFolder, workspaceName,  labelBuilder.buildLabelName(), labelBuilder.buildLabelComment());
-        
+            if ( isApplyLabel() ) {
+                getLabelName(build, Computer.currentComputer());
+                logger.info("------- normalizedLabelName={" + normalizedLabelName + "}");
+//                LabelBuilder labelBuilder = new LabelBuilder(build, getWorkspaceChangesetVersion(), workspaceConfiguration);
+//                project.applyLabel(workFolder, workspaceName,  labelBuilder.buildLabelName(), labelBuilder.buildLabelComment());
+            }
+            
         } catch (ParseException pe) {
             listener.fatalError(pe.getMessage());
             throw new AbortException();
@@ -331,6 +378,7 @@ public class TeamFoundationServerScm extends SCM {
         public static final Pattern USER_AT_DOMAIN_REGEX = Pattern.compile("^([^\\/\\\\\"\\[\\]:|<>+=;,\\*@]+)@([a-z][a-z0-9.-]+)$", Pattern.CASE_INSENSITIVE);
         public static final Pattern DOMAIN_SLASH_USER_REGEX = Pattern.compile("^([a-z][a-z0-9.-]+)\\\\([^\\/\\\\\"\\[\\]:|<>+=;,\\*@]+)$", Pattern.CASE_INSENSITIVE);
         public static final Pattern PROJECT_PATH_REGEX = Pattern.compile("^\\$\\/.*", Pattern.CASE_INSENSITIVE);
+        public static final Pattern LABEL_NAME_REGEX = Pattern.compile("[^\"/:<>\\|\\*\\?@]+[^\\s\\.\"/:<>\\|\\*\\?]$", Pattern.CASE_INSENSITIVE);
         private String tfExecutable;
         
         public DescriptorImpl() {
@@ -391,7 +439,22 @@ public class TeamFoundationServerScm extends SCM {
                     "Workspace name cannot end with a space or period, and cannot contain any of the following characters: \"/:<>|*?", 
                     "Workspace name is mandatory", value);
         }
-        
+
+        public FormValidation doLabelNameCheck(@QueryParameter final String value) {
+            
+            final String errorMessage = String.format("The label name is not supported. " +
+            		"It must be less than 64 characters, cannot end with a space, " +
+            		"and cannot contain any of the following characters: \"/:<>\\|*?@", value);
+
+            if ( ! StringUtils.isEmpty(value) && value.length() >= 64 ) {
+                return FormValidation.error(errorMessage);
+            }
+            
+            return doRegexCheck(new Pattern[]{LABEL_NAME_REGEX},
+                    errorMessage,
+                    "Label name is mandatory when applying label", value);
+        }
+
         @Override
         public boolean configure(StaplerRequest req, JSONObject formData) throws FormException {
             tfExecutable = Util.fixEmpty(req.getParameter("tfs.tfExecutable").trim());
